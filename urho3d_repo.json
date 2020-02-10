@@ -1,0 +1,17 @@
+{
+    "repo_name" : "urho3d2",
+    "valid_addon_types" : ["urho3d"],
+    "addon_groups" : {
+        "stable"    :   {
+            "addons" : ["/home/ttrocha/_dev/projects/games/urho3d-minimal-new-project:Editor",
+                        "/home/ttrocha/_dev/projects/games/urho3d-minimal-new-project:Navigation"]
+        },
+        "testing"    :   {
+            "addons" : ["/home/ttrocha/_dev/projects/games/urho3d-minimal-new-project:Editor"]
+        },
+        "micro" : {
+            "addons" : []
+        }    
+    },
+    "default_addon_group" : "stable"
+}

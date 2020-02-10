@@ -1,0 +1,29 @@
+<html>
+    <h1>repo: {{ data.repo_name }}</h1>
+
+    {% for addon_group in data.addon_groups.values() %}
+    <h3>{{ addon_group.addongroup_name }}</h3>
+
+        {% for addon in addon_group.addons %}
+            <div style="background-color: lightgray;padding:3px;">
+                <span><b>{{ addon.name }}</b></span>
+                <span>{{ addon.description }}</span>
+                <span>{{ addon.category }}</span>
+                <div style="font-size: 60%;">
+                    <div>{{ addon.git_url }}</div>
+                    <div>{{ addon.setup_md }}</div>
+                    <div>{{ addon.res_folder }}</div>
+                    <div>{{ addon.youtube }}</div>
+                    {% for link in addon.links %}
+                    <div>
+                        <a href="{{ link.url }}">{{ link.title }}</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <br/>
+        {% endfor %}
+        <hr/>
+    {% endfor %}
+
+</html>
