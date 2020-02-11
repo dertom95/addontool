@@ -7,6 +7,7 @@ import json,os,sys,urllib.request
 import subprocess
 from jinja2 import Environment, PackageLoader, select_autoescape
 from pathlib import Path
+import argparse
 
 home_folder = str(Path.home())
 
@@ -21,10 +22,12 @@ def error(cause,error_code=1):
     print(cause)
     sys.exit(error_code)
 
-## todo: use args
 repository_file = "urho3d_repo.json"
 root_folder = home_folder+"/.addons"
 verbose = True
+
+## todo: use args
+
 
 git_path = spawn.find_executable("git") 
 
@@ -112,7 +115,7 @@ class AddonGroup:
 
     def link_addons(self):
         global all_addons
-        print("ää linked addon %s %s" % (self.data["addons"],len(self.addons)))
+        print("linked addon %s %s" % (self.data["addons"],len(self.addons)))
         for addon_path in self.data["addons"]:
             if verbose:
                 print("addonpath(%s)  :%s" % (self.name,addon_path) )
@@ -236,18 +239,20 @@ def parse_repo_file(repo_file):
         
     return None
 
+def loadRepoDescription(repo_descr_file):
+    if not os.path.isdir(root_folder):
+        os.makedirs(root_folder)
 
-if not os.path.isdir(root_folder):
-    os.makedirs(root_folder)
+    repoDescr = parse_repo_description_file(repo_descr_file) 
+    return repoDescr
 
-def processRepoDescription(repo_descr_file):
-    repoDescr = parse_repo_description_file(repo_descr_file)            
-
+def processRepoDescription(repoDescr):
     if repoDescr:
         repoDescr.print_repo()
         repoDescr.clone_or_pull(root_folder)
         repoDescr.scan_for_addons()
         repoDescr.write_repo_to_jsonfile(root_folder+"/addon_repo.json")
+        outputHTML(root_folder+"/addon_repo.json")
 
 def processRepo(repo_file=None):
     if not repo_file:
@@ -258,7 +263,7 @@ def processRepo(repo_file=None):
 def outputHTML(repo_file=None):
     repo = processRepo(repo_file)
 
-    template = env.get_template('temp.html')
+    template = env.get_template('repo_template.html')
     file = open(root_folder+"/addon_repo.html","w") 
     file.write(template.render(data=repo))
     file.close()
@@ -275,19 +280,65 @@ def show_addons(addon_group=None,repo_file=None):
     else:
         print("error! unknown addon_group %s" % addon_group)
 
-def main():
-    if len(sys.argv)==1:
+def print_help():
         print("addontool by Thomas Trocha (dertom)")
         print("\t --create-repo [description.json]")
         print("\t --create-html-from-repo [repo.json]")
         print("\t --addons [addon_group]")
         print()
+
+# repository_file = "urho3d_repo.json"
+# root_folder = home_folder+"/.addons"
+# verbose = True
+
+def main():
+    global root_folder,verbose
+
+    parser = argparse.ArgumentParser(description="addontool by Thomas Trocha")
+    parser.add_argument("--init",help="create repository file from repo-description")
+    parser.add_argument("--update",action="store_true",help="updates the current repo")
+    parser.add_argument("--repo_folder",help="custom output folder. (default: %s)" % root_folder)
+    parser.add_argument("--verbose",action='store_true',help="output some internal logs")
+    
+    if len(sys.argv)==1:
+        args = parser.parse_args(['--help'])
+        sys.exit(1)
     else:
-        processRepoDescription(repository_file)
+        args = parser.parse_args()
 
-        #outputHTML()
+        verbose = args.verbose
 
-        show_addons()
+        if args.repo_folder:
+            root_folder = args.repo_folder
+
+        if args.init:
+            repo_descr = loadRepoDescription(args.init)
+            processRepoDescription(repo_descr)
+
+        if args.update:
+            repo = processRepo()
+            repo_desc = RepoDescription(repo["repo_description"])
+            processRepoDescription(repo_desc)
+            print("updated")
+
+
+    print(args)
+    # arg_count = len(sys.argv)
+    # if arg_count==1:
+    #     print_help();
+    # else:
+    #     cmd = sys.argv[1]
+    #     if cmd =="--create-repo":
+    #         if arg_count < 3:
+    #             print("--create-repo : you need to specify a description-file")
+    #             print_help()
+    #             sys.exit(1)
+    #     elif cmd == "--create-html-from-repo"
+    #     processRepoDescription(repository_file)
+
+    #     #outputHTML()
+
+    #     show_addons()
 
 if __name__ == "__main__":
     main()        
