@@ -1,3 +1,5 @@
+#! /usr/bin/python3
+
 ##
 ## python-depedencies: Jinja
 ## (install 'pip install Jinja2') 
@@ -8,6 +10,8 @@ import subprocess
 from jinja2 import Environment, PackageLoader, select_autoescape
 from pathlib import Path
 import argparse
+
+import shutil
 
 home_folder = str(Path.home())
 
@@ -45,10 +49,20 @@ def git_clone_or_pull(gitrepo,destination):
         out = subprocess.check_output(["git", "pull"],cwd=addon_path)
         if verbose:
             print("\tgit pull %s : %s" % (gitrepo, out) )
+    return addon_path
 
 # dict that contains all used gitrepositories and its addons
 git_repos = {}
 all_addons = {}
+
+def copytree(src, dst, symlinks=False, ignore=None):
+    for item in os.listdir(src):
+        s = os.path.join(src, item)
+        d = os.path.join(dst, item)
+        if os.path.isdir(s):
+            shutil.copytree(s, d, symlinks, ignore)
+        else:
+            shutil.copy2(s, d)
 
 class Addon:
     def __init__(self,name,gitrepo):
@@ -70,9 +84,10 @@ class GitRepo:
     def __init__(self,path):
         self.addons = {}
         self.path = path
+        self.local_path = None
 
     def clone_or_pull(self,root_folder):
-        git_clone_or_pull(self.path,root_folder)
+        self.local_path = git_clone_or_pull(self.path,root_folder)
 
     def parse_addons(self,valid_types):
         global all_addons
@@ -89,7 +104,7 @@ class GitRepo:
                     name = addondata["name"]
                     addon = Addon(name,self.path)
                     addon.parse(addondata)
-                    addon.data["local_path"] = self.path
+                    addon.data["local_path"] = self.local_path
                     self.addons[name]=addon # gitrepo-addon
                     addonPath = addon.get_addon_path()
                     all_addons[addonPath]=addon # global-addons
@@ -128,9 +143,6 @@ class AddonGroup:
             
             if verbose:
                 print("linked addon %s %s" % (addon_path,len(self.addons)))
-
-    def export_files(self,output_folder):
-        pass    
 
     def to_json(self):
         json_output = {}
@@ -291,19 +303,61 @@ def print_help():
 # root_folder = home_folder+"/.addons"
 # verbose = True
 
+def install(addonname,outputfolder):
+    repo = processRepo()
+
+    splits = addonname.split('/')
+    addon_group = None
+    if len(splits)==2:
+        addon_group = splits[0]
+        addonname = splits[1]
+
+    if addon_group:
+        try:
+            addon_group = repo["addon_groups"][addon_group]
+        except:
+            error("unknown addon_group:%s" % addon_group)
+        
+    else:
+        addon_group = repo["addon_groups"][repo["default_group"]]
+    
+    
+    for addon in addon_group["addons"]:
+        if addon["name"] == addonname:
+            try:
+                for folder in addon["files"]["folder"]:
+                    srcpath = outputfolder+"/"+folder
+                    if verbose:
+                        print("copy folder %s => %s" % (addon["local_path"]+"/"+folder, srcpath) )
+                    
+                    if not os.path.exists(srcpath):
+                        os.makedirs(srcpath)                        
+                    
+                    copytree(addon["local_path"]+"/"+folder, srcpath)
+            except Exception as e:
+                print(e)
+                print("no folders")
+            print("installed %s" % addon["name"])
+            break
+
 def main():
     global root_folder,verbose
 
+    dirpath = os.getcwd()
+
     parser = argparse.ArgumentParser(description="addontool by Thomas Trocha")
+    parser.add_argument("--repo_folder",help="custom output folder. (default: %s)" % root_folder)
     parser.add_argument("--init",help="create repository file from repo-description")
     parser.add_argument("--update",action="store_true",help="updates the current repo")
-    parser.add_argument("--repo_folder",help="custom output folder. (default: %s)" % root_folder)
+    parser.add_argument("--install",help="install addon. specify addonname (optionally prefix addon-group with '/'-separator)")
+    parser.add_argument("--install-output",default=dirpath,help="custom install output. as default the current folder (%s)" % dirpath)
     parser.add_argument("--verbose",action='store_true',help="output some internal logs")
-    
+
     if len(sys.argv)==1:
+        print("1")
         args = parser.parse_args(['--help'])
-        sys.exit(1)
     else:
+        print("2")
         args = parser.parse_args()
 
         verbose = args.verbose
@@ -321,6 +375,8 @@ def main():
             processRepoDescription(repo_desc)
             print("updated")
 
+        if args.install:
+            install(args.install,args.install_output)
 
     print(args)
     # arg_count = len(sys.argv)
