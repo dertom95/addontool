@@ -39,7 +39,7 @@ if not git_path:
     error("git is not found! you need to have git in your path")
 
 def git_clone_or_pull(gitrepo,destination):
-    addon_path = destination+"/"+gitrepo.split("/")[-1]
+    addon_path = destination+"/"+gitrepo.split("/")[-1].replace(".git","")
 
     if not os.path.exists(addon_path):
         out = subprocess.check_output(["git", "clone",gitrepo],cwd=destination)
@@ -91,9 +91,9 @@ class GitRepo:
 
     def parse_addons(self,valid_types):
         global all_addons
-        addon_file = self.path + "/addon.json"
+        addon_file = self.local_path + "/addon.json"
         if not os.path.isfile(addon_file):
-            print("%s: no addon-file found" % self.path)
+            print("%s: no addon-file found" % self.local_path)
             return
         
         with open(addon_file) as json_file:
