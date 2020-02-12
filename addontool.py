@@ -393,10 +393,7 @@ def install(addonname,outputfolder):
                     print(e)
 
             if addonname not in addons_installed:
-                addons_installed[addonname]={
-                    "Name" : addonname,
-                    "files" : addon["files"]
-                }
+                addons_installed[addonname]=addon
 
             with open(addons_installed_path, 'w') as outfile:
                 json.dump(addons_installed, outfile, indent=4)
