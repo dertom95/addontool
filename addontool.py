@@ -16,7 +16,7 @@ import shutil
 home_folder = str(Path.home())
 
 env = Environment(
-    loader=PackageLoader('addontool', 'html'),
+    loader=PackageLoader('addontool', 'templates'),
     autoescape=select_autoescape(['html', 'xml'])
 )
 
@@ -104,7 +104,7 @@ class GitRepo:
                     name = addondata["name"]
                     addon = Addon(name,self.path)
                     addon.parse(addondata)
-                    addon.data["local_path"] = self.local_path
+                    addon.data["local_path"] = os.path.abspath(self.local_path)
                     self.addons[name]=addon # gitrepo-addon
                     addonPath = addon.get_addon_path()
                     all_addons[addonPath]=addon # global-addons
@@ -118,8 +118,9 @@ class AddonGroup:
         self.addons = {}
         self.name = name
         self.data = data
+
         for addon in data["addons"]:
-            gitrepo,_ = addon.split(':')
+            gitrepo = addon["git"]
 
             if gitrepo not in git_repos:
                 git_repos[gitrepo]=GitRepo(gitrepo)
@@ -131,7 +132,8 @@ class AddonGroup:
     def link_addons(self):
         global all_addons
         print("linked addon %s %s" % (self.data["addons"],len(self.addons)))
-        for addon_path in self.data["addons"]:
+        for addon in self.data["addons"]:
+            addon_path = "%s:%s" % (addon["git"],addon["addon"])
             if verbose:
                 print("addonpath(%s)  :%s" % (self.name,addon_path) )
 
@@ -225,7 +227,7 @@ class RepoDescription:
         json_output["addon_groups"]=json_addon_groups
         
         with open(filepath, 'w') as outfile:
-            json.dump(json_output, outfile,sort_keys=True, indent=4)
+            json.dump(json_output, outfile, indent=4)
 
         print("ok.")        
 
@@ -249,6 +251,16 @@ def parse_repo_file(repo_file):
         print ("REPONAME:%s" % data["repo_name"])
         return data
         
+    return None
+
+def parse_addons_installed(file):
+    if not os.path.isfile(file):
+        new_addons_list = {}
+        return new_addons_list
+
+    with open(file) as json_file:
+        data = json.load(json_file)
+        return data
     return None
 
 def loadRepoDescription(repo_descr_file):
@@ -303,8 +315,55 @@ def print_help():
 # root_folder = home_folder+"/.addons"
 # verbose = True
 
+def list_addon_groups():
+    repo = processRepo()
+
+    print("addon-groups:")
+    for addon_grp_name in repo["addon_groups"]:
+        isdefault=" (default)" if repo["default_group"]==addon_grp_name else ""
+        print("\n\t%s%s:" % (addon_grp_name,isdefault))
+        addon_grp = repo["addon_groups"][addon_grp_name]
+        if len(addon_grp["addons"]):
+            for addon in addon_grp["addons"]:
+                print("\t\t%s - %s - %s" % (addon["name"].ljust(15),addon["description"].ljust(50),addon["category"]))
+        else:
+            print("\t\tno addons")
+
+    print()
+
+def copy_folders(base,from_list,destination):
+    try:
+        for folder in from_list:
+            destpath = destination+"/"+folder
+
+            if not os.path.exists(destpath):
+                os.makedirs(destpath)
+
+            copytree(base+"/"+folder, destpath)
+
+    except Exception as e:
+        print(e)
+        print("no folders")
+
+def copy_file(base,file,destination):
+    try:
+        fullpath = base+"/"+file
+        out = destination+"/"+file
+
+        dirname = os.path.dirname(out)
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
+        print("copy file %s => %s" % ( fullpath,out ))
+        shutil.copy2(fullpath,out)
+    except Exception as e:
+        print(e)
+
+
 def install(addonname,outputfolder):
     repo = processRepo()
+    addons_installed_path=outputfolder+"/.addons_installed.json"
+    addons_installed = parse_addons_installed(addons_installed_path)
 
     splits = addonname.split('/')
     addon_group = None
@@ -314,31 +373,41 @@ def install(addonname,outputfolder):
 
     if addon_group:
         try:
-            addon_group = repo["addon_groups"][addon_group]
+            addon_group = repo["addon_groups"][addon_group]            
         except:
             error("unknown addon_group:%s" % addon_group)
         
     else:
         addon_group = repo["addon_groups"][repo["default_group"]]
     
-    
     for addon in addon_group["addons"]:
         if addon["name"] == addonname:
-            try:
-                for folder in addon["files"]["folder"]:
-                    srcpath = outputfolder+"/"+folder
-                    if verbose:
-                        print("copy folder %s => %s" % (addon["local_path"]+"/"+folder, srcpath) )
-                    
-                    if not os.path.exists(srcpath):
-                        os.makedirs(srcpath)                        
-                    
-                    copytree(addon["local_path"]+"/"+folder, srcpath)
-            except Exception as e:
-                print(e)
-                print("no folders")
+            print(addon)
+            copy_folders(addon["local_path"],addon["files"]["folders"],outputfolder)
             print("installed %s" % addon["name"])
-            break
+            
+            for filename in addon["files"]["files"]:
+                try:
+                    copy_file(addon["local_path"],filename,outputfolder)
+                except Exception as e:
+                    print(e)
+
+            if addonname not in addons_installed:
+                addons_installed[addonname]={
+                    "Name" : addonname,
+                    "files" : addon["files"]
+                }
+
+            with open(addons_installed_path, 'w') as outfile:
+                json.dump(addons_installed, outfile, indent=4)
+    
+    
+    template = env.get_template('Addons.template.cmake')
+    file = open(outputfolder+"/CMake/IncludeAddons.cmake","w") 
+    file.write(template.render(data=addons_installed))
+    file.close()
+
+    
 
 def main():
     global root_folder,verbose
@@ -350,8 +419,11 @@ def main():
     parser.add_argument("--init",help="create repository file from repo-description")
     parser.add_argument("--update",action="store_true",help="updates the current repo")
     parser.add_argument("--install",help="install addon. specify addonname (optionally prefix addon-group with '/'-separator)")
-    parser.add_argument("--install-output",default=dirpath,help="custom install output. as default the current folder (%s)" % dirpath)
+    parser.add_argument("--install_output",default=dirpath,help="custom install output. as default the current folder (%s)" % dirpath)
     parser.add_argument("--verbose",action='store_true',help="output some internal logs")
+    parser.add_argument("--list_addon_groups",action="store_true",help="show all addon-groups for the current repo")
+    parser.add_argument("--addon_group",help="select specfifc addon-group")
+    
 
     if len(sys.argv)==1:
         print("1")
@@ -377,6 +449,9 @@ def main():
 
         if args.install:
             install(args.install,args.install_output)
+
+        if args.list_addon_groups:
+            list_addon_groups()
 
     print(args)
     # arg_count = len(sys.argv)
